@@ -1,17 +1,17 @@
 import sagemaker
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.steps import ProcessingStep, TrainingStep
-from sagemaker.workflow.model_step import ModelStep  # NEW
+from sagemaker.workflow.model_step import ModelStep 
 from sagemaker.workflow.parameters import ParameterString
 from sagemaker.sklearn.processing import SKLearnProcessor
 from sagemaker.estimator import Estimator
 from sagemaker.inputs import TrainingInput
-from sagemaker.model import Model  # NEW
+from sagemaker.model import Model
 import boto3
 
 # --- AWS & SageMaker Infrastructure Setup ---
 region = boto3.Session().region_name
-role = "arn:aws:iam::461627999973:role/service-role/AmazonSageMaker-ExecutionRole-20240808T215869"
+role = "arn:aws:iam::461627999973:role/service-role/AmazonMaker-ExecutionRole-20240808T215869"
 sagemaker_session = sagemaker.session.Session()
 
 # --- Pipeline Runtime Parameters ---
@@ -73,9 +73,7 @@ step_train = TrainingStep(
     }
 )
 
-# --- Step 3: Model Registration (NEW) ---
-
-# Define the model object using the output from the training step
+# --- Step 3: Model Registration ---
 model = Model(
     image_uri=image_uri,
     model_data=step_train.properties.ModelArtifacts.S3ModelArtifacts,
@@ -83,7 +81,6 @@ model = Model(
     sagemaker_session=sagemaker_session
 )
 
-# Define the registration step
 step_register = ModelStep(
     name="RegisterChurnModel",
     step_args=model.register(
@@ -92,7 +89,7 @@ step_register = ModelStep(
         inference_instances=["ml.m5.large"],
         transform_instances=["ml.m5.large"],
         model_package_group_name="ChurnPredictionGroup",
-        approval_status="PendingManualApproval" # Requires manual click in UI to deploy
+        approval_status="PendingManualApproval"
     )
 )
 
@@ -100,7 +97,7 @@ step_register = ModelStep(
 pipeline = Pipeline(
     name="ChurnPredictionPipeline",
     parameters=[input_data],
-    steps=[step_process, step_train, step_register], # Added step_register here
+    steps=[step_process, step_train, step_register],
     sagemaker_session=sagemaker_session
 )
 
@@ -108,7 +105,15 @@ pipeline = Pipeline(
 if __name__ == "__main__":
     print("Upserting and starting pipeline...")
     pipeline.upsert(role_arn=role)
+    
     execution = pipeline.start()
-    print(f"Execution started: {execution.arn}")
+    
+    # FIX: Use str() explicitly or access the ARN from the description 
+    # to avoid the Pipeline Variable __str__ error.
+    print(f"Execution started. ARN: {str(execution.arn)}")
+    
     execution.wait()
-    print(f"Final Status: {execution.describe()['PipelineExecutionStatus']}")
+    
+    # Access status from the describe() dictionary
+    status = execution.describe().get("PipelineExecutionStatus")
+    print(f"Final Status: {status}")
