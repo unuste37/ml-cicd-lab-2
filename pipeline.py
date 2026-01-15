@@ -7,12 +7,15 @@ from sagemaker.sklearn.processing import SKLearnProcessor
 from sagemaker.estimator import Estimator
 from sagemaker.inputs import TrainingInput
 from sagemaker.model import Model
+from sagemaker.workflow.pipeline_context import PipelineSession  # NEW IMPORT
 import boto3
 
 # --- AWS & SageMaker Infrastructure Setup ---
 region = boto3.Session().region_name
-role = "arn:aws:iam::461627999973:role/service-role/AmazonMaker-ExecutionRole-20240808T215869"
-sagemaker_session = sagemaker.session.Session()
+role = "arn:aws:iam::461627999973:role/service-role/AmazonSageMaker-ExecutionRole-20240808T215869"
+
+# FIX: Use PipelineSession instead of sagemaker.session.Session()
+pipeline_session = PipelineSession() 
 
 # --- Pipeline Runtime Parameters ---
 input_data = ParameterString(
@@ -26,7 +29,7 @@ processor = SKLearnProcessor(
     role=role, 
     instance_type="ml.m5.large",
     instance_count=1,
-    sagemaker_session=sagemaker_session
+    sagemaker_session=pipeline_session  # Use pipeline_session
 )
 
 step_process = ProcessingStep(
@@ -57,7 +60,7 @@ estimator = Estimator(
     instance_count=1,
     role=role,
     output_path="s3://sagemaker-cicd-lab-unus/output/", 
-    sagemaker_session=sagemaker_session
+    sagemaker_session=pipeline_session  # Use pipeline_session
 )
 
 estimator.set_hyperparameters(objective="binary:logistic", num_round=100)
@@ -78,7 +81,7 @@ model = Model(
     image_uri=image_uri,
     model_data=step_train.properties.ModelArtifacts.S3ModelArtifacts,
     role=role,
-    sagemaker_session=sagemaker_session
+    sagemaker_session=pipeline_session  # Use pipeline_session
 )
 
 step_register = ModelStep(
@@ -98,22 +101,14 @@ pipeline = Pipeline(
     name="ChurnPredictionPipeline",
     parameters=[input_data],
     steps=[step_process, step_train, step_register],
-    sagemaker_session=sagemaker_session
+    sagemaker_session=pipeline_session  # Use pipeline_session
 )
 
 # --- Pipeline Execution Trigger ---
 if __name__ == "__main__":
-    print("Upserting and starting pipeline...")
+    # For the upsert and start, we use the role ARN and pipeline session
     pipeline.upsert(role_arn=role)
-    
     execution = pipeline.start()
-    
-    # FIX: Use str() explicitly or access the ARN from the description 
-    # to avoid the Pipeline Variable __str__ error.
-    print(f"Execution started. ARN: {str(execution.arn)}")
-    
+    print(f"Execution started.")
     execution.wait()
-    
-    # Access status from the describe() dictionary
-    status = execution.describe().get("PipelineExecutionStatus")
-    print(f"Final Status: {status}")
+    print("Execution completed.")
